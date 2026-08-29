@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Exam Instructions</title>
+
+    <link rel="stylesheet"
+          href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+
+<body>
+
+<header>
+
+    <h1>Online Examination System</h1>
+
+    <nav>
+        <a href="/dashboard">Dashboard</a>
+        <a href="/logout">Logout</a>
+    </nav>
+
+</header>
+
+
+<main class="instructions-container">
+
+    <div class="instruction-card">
+
+        <h2>{{ exam["title"] }}</h2>
+
+        <div class="exam-details">
+
+            <p>
+                <strong>Subject:</strong>
+                {{ exam["subject"] }}
+            </p>
+
+            <p>
+                <strong>Duration:</strong>
+                {{ exam["duration"] }} minutes
+            </p>
+
+            <p>
+                <strong>Total Questions:</strong>
+                {{ exam["total_questions"] }}
+            </p>
+
+        </div>
+
+
+        <h3>Instructions</h3>
+
+        <ul>
+            <li>Read each question carefully.</li>
+            <li>Select one answer for each question.</li>
+            <li>You can move between questions.</li>
+            <li>Make sure you submit the exam before the timer ends.</li>
+            <li>Once the exam is submitted, you cannot change your answers.</li>
+            <li>Do not refresh the page during the examination.</li>
+        </ul>
+
+
+        <div class="instruction-warning">
+
+            <strong>Important:</strong>
+
+            <p>
+                The examination will start immediately after
+                clicking the button below.
+            </p>
+
+        </div>
+
+
+        <a href="/exam/{{ exam['id'] }}" class="btn start-exam-btn">
+            Start Examination
+        </a>
+
+        <a href="/dashboard" class="back-btn">
+            Back to Dashboard
+        </a>
+
+    </div>
+
+</main>
+
+
+<footer>
+
+    <p>
+        © 2026 Online Examination System
+    </p>
+
+</footer>
+
+</body>
+
+</html>

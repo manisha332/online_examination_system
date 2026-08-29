@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Exam History</title>
+
+    <link rel="stylesheet"
+          href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+
+<body>
+
+<header>
+    <h1>Exam History</h1>
+
+    <nav>
+        <a href="/dashboard">Dashboard</a>
+        <a href="/logout">Logout</a>
+    </nav>
+</header>
+
+<main class="history-container">
+
+    {% if results %}
+
+        {% for result in results %}
+
+        <div class="history-card">
+
+            <h2>{{ result["title"] }}</h2>
+
+            <p>
+                Subject: {{ result["subject"] }}
+            </p>
+
+            <p>
+                Score:
+                {{ result["score"] }}/{{ result["total_questions"] }}
+            </p>
+
+            <p>
+                Percentage:
+                {{ "%.2f"|format(result["percentage"]) }}%
+            </p>
+
+            <p>
+                Date: {{ result["date"] }}
+            </p>
+
+        </div>
+
+        {% endfor %}
+
+    {% else %}
+
+        <h3>No exam history available.</h3>
+
+    {% endif %}
+
+</main>
+
+</body>
+</html>

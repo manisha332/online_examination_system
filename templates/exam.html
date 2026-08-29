@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+    <meta charset="UTF-8">
+
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1.0">
+
+    <title>{{ exam["title"] }}</title>
+
+    <link rel="stylesheet"
+          href="{{ url_for('static', filename='css/style.css') }}">
+
+</head>
+
+
+<body>
+
+<header class="exam-header">
+
+    <h2>{{ exam["title"] }}</h2>
+
+    <div class="timer">
+        Time Left:
+        <span id="timer">00:00</span>
+    </div>
+
+</header>
+
+
+<main class="exam-container">
+
+    <form
+        method="POST"
+        action="{{ url_for('submit_exam', exam_id=exam['id']) }}"
+        id="examForm"
+    >
+
+        <!-- QUESTIONS -->
+
+        {% for question in questions %}
+
+        <div
+            class="question-card exam-question"
+            data-question="{{ loop.index0 }}"
+        >
+
+            <h3>
+                Question {{ loop.index }}
+                of {{ questions|length }}
+            </h3>
+
+
+            <p class="question-text">
+                {{ question["question"] }}
+            </p>
+
+
+            <!-- OPTION A -->
+
+            <label class="option">
+
+                <input
+                    type="radio"
+                    name="question_{{ question['id'] }}"
+                    value="A"
+                >
+
+                A. {{ question["option_a"] }}
+
+            </label>
+
+
+            <!-- OPTION B -->
+
+            <label class="option">
+
+                <input
+                    type="radio"
+                    name="question_{{ question['id'] }}"
+                    value="B"
+                >
+
+                B. {{ question["option_b"] }}
+
+            </label>
+
+
+            <!-- OPTION C -->
+
+            <label class="option">
+
+                <input
+                    type="radio"
+                    name="question_{{ question['id'] }}"
+                    value="C"
+                >
+
+                C. {{ question["option_c"] }}
+
+            </label>
+
+
+            <!-- OPTION D -->
+
+            <label class="option">
+
+                <input
+                    type="radio"
+                    name="question_{{ question['id'] }}"
+                    value="D"
+                >
+
+                D. {{ question["option_d"] }}
+
+            </label>
+
+        </div>
+
+        {% endfor %}
+
+
+        <!-- NAVIGATION -->
+
+        <div class="question-navigation">
+
+            <button
+                type="button"
+                id="previousBtn"
+                onclick="previousQuestion()"
+            >
+                Previous
+            </button>
+
+
+            <button
+                type="button"
+                id="nextBtn"
+                onclick="nextQuestion()"
+            >
+                Next
+            </button>
+
+        </div>
+
+
+        <!-- QUESTION NUMBERS -->
+
+        <div class="question-numbers">
+
+            <p>Questions:</p>
+
+            {% for question in questions %}
+
+            <button
+                type="button"
+                class="question-number"
+                onclick="goToQuestion( loop.index0 )"
+            >
+                {{ loop.index }}
+            </button>
+
+            {% endfor %}
+
+        </div>
+
+
+        <!-- SUBMIT -->
+
+        <div class="submit-section">
+
+            <button
+                type="submit"
+                class="submit-btn"
+                onclick="return confirmSubmit()"
+            >
+                Submit Examination
+            </button>
+
+        </div>
+
+    </form>
+
+</main>
+
+
+<script>
+
+    /* ==========================
+       QUESTION NAVIGATION
+    ========================== */
+
+    const questions =
+        document.querySelectorAll(".exam-question");
+
+    let currentQuestion = 0;
+
+
+    function showQuestion(index) {
+
+        questions.forEach(function(question, i) {
+
+            if (i === index) {
+
+                question.style.display = "block";
+
+            } else {
+
+                question.style.display = "none";
+
+            }
+
+        });
+
+
+        currentQuestion = index;
+
+
+        // Previous button
+
+        const previousBtn =
+            document.getElementById("previousBtn");
+
+        if (currentQuestion === 0) {
+
+            previousBtn.disabled = true;
+
+        } else {
+
+            previousBtn.disabled = false;
+
+        }
+
+
+        // Next button
+
+        const nextBtn =
+            document.getElementById("nextBtn");
+
+        if (currentQuestion === questions.length - 1) {
+
+            nextBtn.style.display = "none";
+
+        } else {
+
+            nextBtn.style.display = "inline-block";
+
+        }
+
+
+        // Highlight current question
+
+        const numberButtons =
+            document.querySelectorAll(".question-number");
+
+
+        numberButtons.forEach(function(button, i) {
+
+            if (i === currentQuestion) {
+
+                button.classList.add("active");
+
+            } else {
+
+                button.classList.remove("active");
+
+            }
+
+        });
+
+    }
+
+
+    function nextQuestion() {
+
+        if (currentQuestion < questions.length - 1) {
+
+            showQuestion(currentQuestion + 1);
+
+        }
+
+    }
+
+
+    function previousQuestion() {
+
+        if (currentQuestion > 0) {
+
+            showQuestion(currentQuestion - 1);
+
+        }
+
+    }
+
+
+    function goToQuestion(index) {
+
+        showQuestion(index);
+
+    }
+
+
+    // Show first question
+
+    showQuestion(0);
+
+
+    /* ==========================
+       TIMER
+    ========================== */
+
+    let timeLeft =
+      exam["duration"]  * 60;
+
+
+    const timerElement =
+        document.getElementById("timer");
+
+
+    const examForm =
+        document.getElementById("examForm");
+
+
+    function updateTimer() {
+
+        let minutes =
+            Math.floor(timeLeft / 60);
+
+
+        let seconds =
+            timeLeft % 60;
+
+
+        if (seconds < 10) {
+
+            seconds = "0" + seconds;
+
+        }
+
+
+        timerElement.textContent =
+            minutes + ":" + seconds;
+
+
+        if (timeLeft <= 0) {
+
+            clearInterval(timerInterval);
+
+            alert(
+                "Time is over! Your exam will be submitted."
+            );
+
+            examForm.submit();
+
+            return;
+
+        }
+
+
+        timeLeft--;
+
+    }
+
+
+    updateTimer();
+
+
+    const timerInterval =
+        setInterval(updateTimer, 1000);
+
+
+    /* ==========================
+       SUBMIT CONFIRMATION
+    ========================== */
+
+    function confirmSubmit() {
+
+        return confirm(
+            "Are you sure you want to submit the examination?"
+        );
+
+    }
+
+</script>
+
+
+</body>
+
+</html>

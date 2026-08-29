@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Admin Dashboard</title>
+
+    <link rel="stylesheet"
+          href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+
+<body>
+
+    <header>
+
+        <h1>Admin Panel</h1>
+
+        <nav>
+            <a href="/admin/dashboard">Dashboard</a>
+            <a href="/admin/logout">Logout</a>
+        </nav>
+
+    </header>
+
+
+    <main class="dashboard">
+
+        <div class="welcome">
+
+            <h2>Welcome, {{ admin_name }} 👨‍💼</h2>
+
+            <p>
+                Manage examinations, questions and student results.
+            </p>
+
+        </div>
+
+
+        <div class="dashboard-cards">
+
+            <div class="dashboard-card">
+
+                <h3>Total Exams</h3>
+
+                <p>{{ total_exams }}</p>
+
+            </div>
+
+
+            <div class="dashboard-card">
+
+                <h3>Total Questions</h3>
+
+                <p>{{ total_questions }}</p>
+
+            </div>
+
+
+            <div class="dashboard-card">
+
+                <h3>Total Students</h3>
+
+                <p>{{ total_students }}</p>
+
+            </div>
+
+        </div>
+
+
+        <section class="admin-actions">
+
+            <h2>Management</h2>
+
+            <div class="action-container">
+
+                <a href="/admin/exams" class="btn">
+                    Manage Exams
+                </a>
+
+                <a href="/admin/questions" class="btn">
+                    Manage Questions
+                </a>
+
+                <a href="#" class="btn">
+                    View Results
+                </a>
+
+            </div>
+
+        </section>
+
+    </main>
+
+
+    <footer>
+
+        <p>
+            © 2026 Online Examination System
+        </p>
+
+    </footer>
+
+</body>
+
+</html>

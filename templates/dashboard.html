@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Student Dashboard</title>
+
+    <link rel="stylesheet"
+          href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+
+<body>
+
+    <header>
+
+        <h1>Online Examination System</h1>
+
+        <nav>
+            <a href="/dashboard">Dashboard</a>
+            <a href="/history">History</a>
+            <a href="/logout">Logout</a>
+        </nav>
+
+    </header>
+
+
+    <main class="dashboard">
+
+        <div class="welcome">
+
+            <h2>Welcome, {{ user_name }} 👋</h2>
+
+            <p>
+                Select an examination and start your test.
+            </p>
+
+        </div>
+
+
+        <div class="dashboard-cards">
+
+            <div class="dashboard-card">
+                <h3>Available Exams</h3>
+                <p>{{ total_exams }}</p>
+            </div>
+
+            <div class="dashboard-card">
+                <h3>Completed Exams</h3>
+                <p>{{ completed_exams }}</p>
+            </div>
+
+            <div class="dashboard-card">
+                <h3>Results</h3>
+                <p>{{ completed_exams }}</p>
+            </div>
+
+        </div>
+
+
+        <section class="exam-section">
+
+            <h2>Available Examinations</h2>
+
+            {% if exams %}
+
+                <div class="exam-container">
+
+                    {% for exam in exams %}
+
+                        <div class="exam-card">
+
+                            <h3>{{ exam["title"] }}</h3>
+
+                            <p>
+                                <strong>Subject:</strong>
+                                {{ exam["subject"] }}
+                            </p>
+
+                            <p>
+                                <strong>Duration:</strong>
+                                {{ exam["duration"] }} minutes
+                            </p>
+
+                            <p>
+                                <strong>Questions:</strong>
+                                {{ exam["total_questions"] }}
+                            </p>
+
+                            <a href="/instructions/{{ exam['id'] }}"
+                               class="btn">
+                                Start Exam
+                            </a>
+
+                        </div>
+
+                    {% endfor %}
+
+                </div>
+
+            {% else %}
+
+                <div class="no-exam">
+
+                    <p>
+                        No examinations are currently available.
+                    </p>
+
+                </div>
+
+            {% endif %}
+
+        </section>
+
+    </main>
+
+
+    <footer>
+
+        <p>
+            © 2026 Online Examination System
+        </p>
+
+    </footer>
+
+</body>
+
+</html>

@@ -1,0 +1,1 @@
+console.log("Online Examination System loaded successfully.");

@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Exam Result</title>
+
+    <link rel="stylesheet"
+          href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+
+<body>
+
+<header>
+
+    <h1>Online Examination System</h1>
+
+    <nav>
+        <a href="/dashboard">Dashboard</a>
+        <a href="/logout">Logout</a>
+    </nav>
+
+</header>
+
+
+<main class="result-container">
+
+    <div class="result-card">
+
+        <!-- Success Message -->
+
+        <div class="success-message">
+
+            <h2>✅ Exam Submitted Successfully!</h2>
+
+            <p>
+                Your examination has been submitted successfully.
+            </p>
+
+        </div>
+
+
+        <h2>Examination Result</h2>
+
+        <h3>{{ exam["title"] }}</h3>
+
+
+        <div class="result-details">
+
+            <p>
+                <strong>Student:</strong>
+                {{ user_name }}
+            </p>
+
+            <p>
+                <strong>Subject:</strong>
+                {{ exam["subject"] }}
+            </p>
+
+            <p>
+                <strong>Score:</strong>
+                {{ result["score"] }}
+                / {{ result["total_questions"] }}
+            </p>
+
+            <p>
+                <strong>Percentage:</strong>
+                {{ "%.2f"|format(result["percentage"]) }}%
+            </p>
+
+        </div>
+
+
+        {% if result["percentage"] >= 40 %}
+
+            <h3>🎉 Congratulations!</h3>
+
+            <p>You have successfully completed the examination.</p>
+
+        {% else %}
+
+            <h3>📚 Keep Practicing!</h3>
+
+            <p>Review the topics and try again.</p>
+
+        {% endif %}
+
+
+        <br>
+
+        <a href="/dashboard" class="btn">
+            Back to Dashboard
+        </a>
+
+    </div>
+
+</main>
+
+
+<footer>
+
+    <p>© 2026 Online Examination System</p>
+
+</footer>
+
+</body>
+
+</html>

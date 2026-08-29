@@ -1,0 +1,53 @@
+ <!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Online Examination System</title>
+
+    <link rel="stylesheet"
+          href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+
+<body>
+
+    <header>
+        <h1>Online Examination System</h1>
+
+        <nav>
+            <a href="#">Home</a>
+            <a href="/login">Login</a>
+            <a href="/register">Register</a>
+            <a href="/admin/login">Admin Login</a>
+        </nav>
+    </header>
+
+
+    <main class="hero">
+
+        <div class="hero-content">
+
+            <h2>Welcome to Online Examination System</h2>
+
+            <p>
+                Take your examinations online with a simple,
+                secure and user-friendly platform.
+            </p>
+
+            <div class="buttons">
+                <a href="/login" class="btn">Student Login</a>
+                <a href="/register" class="btn secondary">Register</a>
+            </div>
+
+        </div>
+
+    </main>
+
+
+    <footer>
+        <p>© 2026 Online Examination System</p>
+    </footer>
+
+</body>
+</html>

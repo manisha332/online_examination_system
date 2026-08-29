@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Manage Questions</title>
+
+    <link rel="stylesheet"
+          href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+
+<body>
+
+<header>
+
+    <h1>Admin Panel</h1>
+
+    <nav>
+        <a href="/admin/dashboard">Dashboard</a>
+        <a href="/admin/exams">Manage Exams</a>
+        <a href="/admin/logout">Logout</a>
+    </nav>
+
+</header>
+
+
+<main class="dashboard">
+
+    <div class="welcome">
+
+        <h2>Add Questions</h2>
+
+        <p>
+            Add multiple-choice questions to your examination.
+        </p>
+
+    </div>
+
+
+    {% if message %}
+        <p class="message">{{ message }}</p>
+    {% endif %}
+
+
+    <!-- Select Exam -->
+
+    <div class="form-container exam-form">
+
+        <form method="POST">
+
+            <label>Select Examination</label>
+
+            <select name="exam_id" required>
+
+                <option value="">
+                    -- Select Exam --
+                </option>
+
+                {% for exam in exams %}
+
+                    <option value="{{ exam['id'] }}">
+
+                        {{ exam['title'] }}
+
+                    </option>
+
+                {% endfor %}
+
+            </select>
+
+
+            <label>Question</label>
+
+            <textarea
+                name="question"
+                placeholder="Enter your question"
+                rows="4"
+                required></textarea>
+
+
+            <label>Option A</label>
+
+            <input
+                type="text"
+                name="option_a"
+                placeholder="Enter option A"
+                required>
+
+
+            <label>Option B</label>
+
+            <input
+                type="text"
+                name="option_b"
+                placeholder="Enter option B"
+                required>
+
+
+            <label>Option C</label>
+
+            <input
+                type="text"
+                name="option_c"
+                placeholder="Enter option C"
+                required>
+
+
+            <label>Option D</label>
+
+            <input
+                type="text"
+                name="option_d"
+                placeholder="Enter option D"
+                required>
+
+
+            <label>Correct Answer</label>
+
+            <select name="correct_answer" required>
+
+                <option value="">
+                    -- Select Correct Answer --
+                </option>
+
+                <option value="A">Option A</option>
+                <option value="B">Option B</option>
+                <option value="C">Option C</option>
+                <option value="D">Option D</option>
+
+            </select>
+
+
+            <button type="submit">
+                Add Question
+            </button>
+
+        </form>
+
+    </div>
+
+
+    <!-- Existing Questions -->
+
+    <section class="exam-section">
+
+        <h2>Existing Questions</h2>
+
+        {% if questions %}
+
+            {% for question in questions %}
+
+                <div class="exam-card">
+
+                    <h3>
+                        {{ loop.index }}.
+                        {{ question['question'] }}
+                    </h3>
+
+                    <p>
+                        A. {{ question['option_a'] }}
+                    </p>
+
+                    <p>
+                        B. {{ question['option_b'] }}
+                    </p>
+
+                    <p>
+                        C. {{ question['option_c'] }}
+                    </p>
+
+                    <p>
+                        D. {{ question['option_d'] }}
+                    </p>
+
+                    <p>
+                        <strong>
+                            Correct Answer:
+                            {{ question['correct_answer'] }}
+                        </strong>
+                    </p>
+
+                </div>
+
+            {% endfor %}
+
+        {% else %}
+
+            <div class="no-exam">
+
+                <p>
+                    No questions have been added yet.
+                </p>
+
+            </div>
+
+        {% endif %}
+
+    </section>
+
+</main>
+
+
+<footer>
+
+    <p>
+        © 2026 Online Examination System
+    </p>
+
+</footer>
+
+</body>
+
+</html>

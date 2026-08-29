@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Manage Exams</title>
+
+    <link rel="stylesheet"
+          href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+
+<body>
+
+    <header>
+
+        <h1>Admin Panel</h1>
+
+        <nav>
+            <a href="/admin/dashboard">Dashboard</a>
+            <a href="/admin/logout">Logout</a>
+        </nav>
+
+    </header>
+
+
+    <main class="dashboard">
+
+        <div class="welcome">
+
+            <h2>Create New Examination</h2>
+
+            <p>
+                Add an examination for students.
+            </p>
+
+        </div>
+
+
+        {% if message %}
+            <p class="message">{{ message }}</p>
+        {% endif %}
+
+
+        <div class="form-container exam-form">
+
+            <form method="POST">
+
+                <label>Exam Title</label>
+
+                <input
+                    type="text"
+                    name="title"
+                    placeholder="Example: Python Programming"
+                    required
+                >
+
+
+                <label>Subject</label>
+
+                <input
+                    type="text"
+                    name="subject"
+                    placeholder="Example: Python"
+                    required
+                >
+
+
+                <label>Duration (Minutes)</label>
+
+                <input
+                    type="number"
+                    name="duration"
+                    placeholder="Example: 30"
+                    min="1"
+                    required
+                >
+
+
+                <label>Total Questions</label>
+
+                <input
+                    type="number"
+                    name="total_questions"
+                    placeholder="Example: 20"
+                    min="1"
+                    required
+                >
+
+
+                <button type="submit">
+                    Create Exam
+                </button>
+
+            </form>
+
+        </div>
+
+
+        <section class="exam-section">
+
+            <h2>Existing Examinations</h2>
+
+            {% if exams %}
+
+                <div class="exam-container">
+
+                    {% for exam in exams %}
+
+                        <div class="exam-card">
+
+                            <h3>{{ exam["title"] }}</h3>
+
+                            <p>
+                                <strong>Subject:</strong>
+                                {{ exam["subject"] }}
+                            </p>
+
+                            <p>
+                                <strong>Duration:</strong>
+                                {{ exam["duration"] }} minutes
+                            </p>
+
+                            <p>
+                                <strong>Questions:</strong>
+                                {{ exam["total_questions"] }}
+                            </p>
+
+                        </div>
+
+                    {% endfor %}
+
+                </div>
+
+            {% else %}
+
+                <div class="no-exam">
+                    <p>No examinations created yet.</p>
+                </div>
+
+            {% endif %}
+
+        </section>
+
+    </main>
+
+
+    <footer>
+
+        <p>© 2026 Online Examination System</p>
+
+    </footer>
+
+</body>
+
+</html>
