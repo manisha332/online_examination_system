@@ -1,663 +1,871 @@
 import os
+from datetime import datetime, timezone
+
 from flask import Flask, render_template, request, redirect, url_for, session
-import sqlite3
+from pymongo import MongoClient, ReturnDocument
+from pymongo.errors import DuplicateKeyError
+
+
+# =========================================================
+# FLASK APP
+# =========================================================
 
 app = Flask(__name__)
-app.secret_key = "online-exam-secret-key"
 
-DATABASE = "online_exam.db"
-
-
-def get_db_connection():
-    conn = sqlite3.connect(DATABASE)
-    conn.row_factory = sqlite3.Row
-    return conn
+# Use Render environment variable if available
+app.secret_key = os.getenv(
+    "SECRET_KEY",
+    "online-exam-secret-key"
+)
 
 
-def create_tables():
-    conn = get_db_connection()
+# =========================================================
+# MONGODB ATLAS CONNECTION
+# =========================================================
 
-    # Users table
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            email TEXT UNIQUE NOT NULL,
-            password TEXT NOT NULL,
-            role TEXT NOT NULL DEFAULT 'student'
+MONGO_URI = os.getenv("MONGO_URI")
+
+if not MONGO_URI:
+    raise RuntimeError("MONGO_URI environment variable is not set.")
+
+client = MongoClient(
+    MONGO_URI,
+    serverSelectionTimeoutMS=10000
+)
+
+# Database name
+db = client["online_exam"]
+
+
+# =========================================================
+# COLLECTIONS
+# =========================================================
+
+users = db["users"]
+exams = db["exams"]
+questions = db["questions"]
+results = db["results"]
+answers = db["answers"]
+counters = db["counters"]
+
+
+# =========================================================
+# MONGODB INDEXES
+# =========================================================
+
+def create_indexes():
+    """
+    Create useful indexes in MongoDB.
+    """
+
+    # Email must be unique
+    users.create_index(
+        "email",
+        unique=True
+    )
+
+    # IDs should also be unique
+    exams.create_index(
+        "id",
+        unique=True
+    )
+
+    questions.create_index(
+        "id",
+        unique=True
+    )
+
+    results.create_index(
+        "id",
+        unique=True
+    )
+
+    answers.create_index(
+        "id",
+        unique=True
+    )
+
+
+# =========================================================
+# ID COUNTER
+# =========================================================
+
+def initialize_counter(name, collection):
+    """
+    Create a counter for a collection if it doesn't already exist.
+    """
+
+    existing_counter = counters.find_one({
+        "_id": name
+    })
+
+    if existing_counter is None:
+
+        last_document = collection.find_one(
+            sort=[("id", -1)]
         )
-    """)
 
-    # Exams table
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS exams (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            title TEXT NOT NULL,
-            subject TEXT NOT NULL,
-            duration INTEGER NOT NULL,
-            total_questions INTEGER NOT NULL
+        last_id = 0
+
+        if last_document:
+            last_id = last_document.get("id", 0)
+
+        counters.insert_one({
+            "_id": name,
+            "seq": last_id
+        })
+
+
+def initialize_counters():
+
+    initialize_counter("users", users)
+    initialize_counter("exams", exams)
+    initialize_counter("questions", questions)
+    initialize_counter("results", results)
+    initialize_counter("answers", answers)
+
+
+def get_next_id(name):
+    """
+    Generate the next integer ID.
+
+    We are using integer IDs instead of MongoDB ObjectIds
+    so that the existing Flask routes such as:
+
+        /exam/<int:exam_id>
+
+    continue to work.
+    """
+
+    counter = counters.find_one_and_update(
+        {"_id": name},
+        {"$inc": {"seq": 1}},
+        upsert=True,
+        return_document=ReturnDocument.AFTER
+    )
+
+    return counter["seq"]
+
+
+# =========================================================
+# CREATE DEFAULT ADMIN
+# =========================================================
+
+def create_admin():
+
+    admin_email = "admin@example.com"
+
+    existing_admin = users.find_one({
+        "email": admin_email
+    })
+
+    if existing_admin is None:
+
+        users.insert_one({
+            "id": get_next_id("users"),
+            "name": "Administrator",
+            "email": admin_email,
+            "password": "admin123",
+            "role": "admin"
+        })
+
+        print("Default admin created.")
+
+    else:
+
+        # Make sure this account remains an admin
+        users.update_one(
+            {"email": admin_email},
+            {
+                "$set": {
+                    "role": "admin"
+                }
+            }
         )
-    """)
 
-    # Questions table
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS questions (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            exam_id INTEGER NOT NULL,
-            question TEXT NOT NULL,
-            option_a TEXT NOT NULL,
-            option_b TEXT NOT NULL,
-            option_c TEXT NOT NULL,
-            option_d TEXT NOT NULL,
-            correct_answer TEXT NOT NULL,
-            FOREIGN KEY (exam_id) REFERENCES exams(id)
-        )
-    """)
 
-    # Results table
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS results (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER NOT NULL,
-            exam_id INTEGER NOT NULL,
-            score INTEGER NOT NULL,
-            total_questions INTEGER NOT NULL,
-            percentage REAL NOT NULL,
-            date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (user_id) REFERENCES users(id),
-            FOREIGN KEY (exam_id) REFERENCES exams(id)
-        )
-    """)
-
-    # Answers table
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS answers (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            result_id INTEGER NOT NULL,
-            question_id INTEGER NOT NULL,
-            selected_answer TEXT,
-            FOREIGN KEY (result_id) REFERENCES results(id),
-            FOREIGN KEY (question_id) REFERENCES questions(id)
-        )
-    """)
-
-    conn.commit()
-    conn.close()
-
+# =========================================================
+# HOME PAGE
+# =========================================================
 
 @app.route("/")
 def home():
+
     return render_template("index.html")
+
+
+# =========================================================
+# STUDENT REGISTRATION
+# =========================================================
 
 @app.route("/register", methods=["GET", "POST"])
 def register():
 
-    message = ""
-
     if request.method == "POST":
 
-        name = request.form["name"]
-        email = request.form["email"]
-        password = request.form["password"]
+        name = request.form.get("fullname")
+        email = request.form.get("email")
+        rollno = request.form.get("rollno")
+        password = request.form.get("password")
 
-        conn = get_db_connection()
+        # Check whether email already exists
+        existing_user = users.find_one({
+            "email": email
+        })
 
-        try:
-            conn.execute(
-                """
-                INSERT INTO users (name, email, password, role)
-                VALUES (?, ?, ?, ?)
-                """,
-                (name, email, password, "student")
+        if existing_user:
+
+            return render_template(
+                "register.html",
+                error="Email already registered."
             )
 
-            conn.commit()
-            message = "Registration successful!"
+        try:
 
-        except sqlite3.IntegrityError:
-            message = "Email already registered."
+            users.insert_one({
+                "id": get_next_id("users"),
+                "name": name,
+                "email": email,
+                "rollno": rollno,
+                "password": password,
+                "role": "student"
+            })
 
-        conn.close()
+            return redirect(
+                url_for("login")
+            )
 
-    return render_template("register.html", message=message)    
+        except DuplicateKeyError:
+
+            return render_template(
+                "register.html",
+                error="Email already registered."
+            )
+
+    return render_template(
+        "register.html"
+    )
+
+
+# =========================================================
+# STUDENT LOGIN
+# =========================================================
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
 
-    message = ""
-
     if request.method == "POST":
 
-        email = request.form["email"]
-        password = request.form["password"]
+        email = request.form.get("email")
+        password = request.form.get("password")
 
-        conn = get_db_connection()
-
-        user = conn.execute(
-            """
-            SELECT * FROM users
-            WHERE email = ? AND password = ?
-            """,
-            (email, password)
-        ).fetchone()
-
-        conn.close()
+        user = users.find_one({
+            "email": email,
+            "password": password
+        })
 
         if user:
 
             session["user_id"] = user["id"]
             session["user_name"] = user["name"]
-            session["user_role"] = user["role"]
+            session["user_email"] = user["email"]
+            session["role"] = user.get("role", "student")
 
-            return redirect(url_for("dashboard"))
+            return redirect(
+                url_for("dashboard")
+            )
 
-        else:
-            message = "Invalid email or password."
+        return render_template(
+            "login.html",
+            error="Invalid email or password."
+        )
 
-    return render_template("login.html", message=message)
+    return render_template(
+        "login.html"
+    )
+
+
+# =========================================================
+# STUDENT DASHBOARD
+# =========================================================
 
 @app.route("/dashboard")
 def dashboard():
 
     if "user_id" not in session:
-        return redirect(url_for("login"))
 
-    conn = get_db_connection()
+        return redirect(
+            url_for("login")
+        )
 
-    exams = conn.execute(
-        "SELECT * FROM exams"
-    ).fetchall()
+    # Get all exams
+    all_exams = list(
+        exams.find().sort("id", 1)
+    )
 
-    completed = conn.execute(
-        """
-        SELECT COUNT(*) AS count
-        FROM results
-        WHERE user_id = ?
-        """,
-        (session["user_id"],)
-    ).fetchone()
-
-    conn.close()
-
-    total_exams = len(exams)
-    completed_exams = completed["count"]
+    # Get completed exams for current user
+    completed_count = results.count_documents({
+        "user_id": session["user_id"]
+    })
 
     return render_template(
         "dashboard.html",
-        user_name=session["user_name"],
-        exams=exams,
-        total_exams=total_exams,
-        completed_exams=completed_exams
-    )    
+        exams=all_exams,
+        completed_count=completed_count
+    )
+
+
+# =========================================================
+# LOGOUT
+# =========================================================
 
 @app.route("/logout")
 def logout():
 
     session.clear()
 
-    return redirect(url_for("login"))
+    return redirect(
+        url_for("home")
+    )
 
 
-def create_admin():
-    conn = get_db_connection()
+# =========================================================
+# ADMIN LOGIN
+# =========================================================
 
-    admin = conn.execute(
-        "SELECT * FROM users WHERE email = ?",
-        ("admin@example.com",)
-    ).fetchone()
-
-    if admin:
-        # Make sure this account is an admin
-        conn.execute(
-            """
-            UPDATE users
-            SET name = ?, password = ?, role = ?
-            WHERE email = ?
-            """,
-            (
-                "Administrator",
-                "admin123",
-                "admin",
-                "admin@example.com"
-            )
-        )
-    else:
-        # Create admin account
-        conn.execute(
-            """
-            INSERT INTO users (name, email, password, role)
-            VALUES (?, ?, ?, ?)
-            """,
-            (
-                "Administrator",
-                "admin@example.com",
-                "admin123",
-                "admin"
-            )
-        )
-
-    conn.commit()
-    conn.close()
 @app.route("/admin/login", methods=["GET", "POST"])
 def admin_login():
 
-    message = ""
-
     if request.method == "POST":
 
-        email = request.form["email"]
-        password = request.form["password"]
+        email = request.form.get("email")
+        password = request.form.get("password")
 
-        conn = get_db_connection()
-
-        admin = conn.execute(
-            """
-            SELECT * FROM users
-            WHERE email = ? AND password = ? AND role = 'admin'
-            """,
-            (email, password)
-        ).fetchone()
-
-        conn.close()
+        admin = users.find_one({
+            "email": email,
+            "password": password,
+            "role": "admin"
+        })
 
         if admin:
 
             session["admin_id"] = admin["id"]
             session["admin_name"] = admin["name"]
+            session["admin_email"] = admin["email"]
+            session["role"] = "admin"
 
-            return redirect(url_for("admin_dashboard"))
+            return redirect(
+                url_for("admin_dashboard")
+            )
 
-        else:
-            message = "Invalid admin email or password."
+        return render_template(
+            "admin_login.html",
+            error="Invalid admin email or password."
+        )
 
     return render_template(
-        "admin_login.html",
-        message=message
+        "admin_login.html"
     )
+
+
+# =========================================================
+# ADMIN DASHBOARD
+# =========================================================
 
 @app.route("/admin/dashboard")
 def admin_dashboard():
 
-    if "admin_id" not in session:
-        return redirect(url_for("admin_login"))
+    if session.get("role") != "admin":
 
-    conn = get_db_connection()
+        return redirect(
+            url_for("admin_login")
+        )
 
-    total_exams = conn.execute(
-        "SELECT COUNT(*) AS count FROM exams"
-    ).fetchone()["count"]
+    total_users = users.count_documents({
+        "role": "student"
+    })
 
-    total_questions = conn.execute(
-        "SELECT COUNT(*) AS count FROM questions"
-    ).fetchone()["count"]
+    total_exams = exams.count_documents({})
 
-    total_students = conn.execute(
-        """
-        SELECT COUNT(*) AS count
-        FROM users
-        WHERE role = 'student'
-        """
-    ).fetchone()["count"]
+    total_questions = questions.count_documents({})
 
-    conn.close()
+    total_results = results.count_documents({})
 
     return render_template(
         "admin_dashboard.html",
-        admin_name=session["admin_name"],
+        total_users=total_users,
         total_exams=total_exams,
         total_questions=total_questions,
-        total_students=total_students
+        total_results=total_results
     )
+
+
+# =========================================================
+# ADMIN LOGOUT
+# =========================================================
 
 @app.route("/admin/logout")
 def admin_logout():
 
-    session.pop("admin_id", None)
-    session.pop("admin_name", None)
+    session.clear()
 
-    return redirect(url_for("admin_login"))
+    return redirect(
+        url_for("home")
+    )
+
+
+# =========================================================
+# ADMIN - CREATE EXAM
+# =========================================================
 
 @app.route("/admin/exams", methods=["GET", "POST"])
-def manage_exams():
+def admin_exams():
 
-    if "admin_id" not in session:
-        return redirect(url_for("admin_login"))
+    if session.get("role") != "admin":
 
-    message = ""
-
-    conn = get_db_connection()
+        return redirect(
+            url_for("admin_login")
+        )
 
     if request.method == "POST":
 
-        title = request.form["title"]
-        subject = request.form["subject"]
-        duration = request.form["duration"]
-        total_questions = request.form["total_questions"]
+        title = request.form.get("title")
+        subject = request.form.get("subject")
 
-        conn.execute(
-            """
-            INSERT INTO exams
-            (title, subject, duration, total_questions)
-            VALUES (?, ?, ?, ?)
-            """,
-            (
-                title,
-                subject,
-                duration,
-                total_questions
+        try:
+
+            duration = int(
+                request.form.get("duration", 0)
             )
+
+            total_questions = int(
+                request.form.get(
+                    "total_questions",
+                    0
+                )
+            )
+
+        except ValueError:
+
+            return render_template(
+                "admin_exams.html",
+                exams=list(
+                    exams.find().sort("id", 1)
+                ),
+                error="Please enter valid numbers."
+            )
+
+        exams.insert_one({
+            "id": get_next_id("exams"),
+            "title": title,
+            "subject": subject,
+            "duration": duration,
+            "total_questions": total_questions
+        })
+
+        return redirect(
+            url_for("admin_exams")
         )
 
-        conn.commit()
-
-        message = "Examination created successfully!"
-
-    exams = conn.execute(
-        "SELECT * FROM exams ORDER BY id DESC"
-    ).fetchall()
-
-    conn.close()
+    all_exams = list(
+        exams.find().sort("id", 1)
+    )
 
     return render_template(
-        "manage_exams.html",
-        exams=exams,
-        message=message
+        "admin_exams.html",
+        exams=all_exams
     )
+
+
+# =========================================================
+# ADMIN - ADD QUESTIONS
+# =========================================================
 
 @app.route("/admin/questions", methods=["GET", "POST"])
-def manage_questions():
+def admin_questions():
 
-    if "admin_id" not in session:
-        return redirect(url_for("admin_login"))
+    if session.get("role") != "admin":
 
-    message = ""
+        return redirect(
+            url_for("admin_login")
+        )
 
-    conn = get_db_connection()
+    all_exams = list(
+        exams.find().sort("id", 1)
+    )
 
     if request.method == "POST":
 
-        exam_id = request.form["exam_id"]
-        question = request.form["question"]
-        option_a = request.form["option_a"]
-        option_b = request.form["option_b"]
-        option_c = request.form["option_c"]
-        option_d = request.form["option_d"]
-        correct_answer = request.form["correct_answer"]
+        try:
 
-        conn.execute(
-            """
-            INSERT INTO questions
-            (
-                exam_id,
-                question,
-                option_a,
-                option_b,
-                option_c,
-                option_d,
-                correct_answer
+            exam_id = int(
+                request.form.get("exam_id")
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                exam_id,
-                question,
-                option_a,
-                option_b,
-                option_c,
-                option_d,
-                correct_answer
+
+        except (ValueError, TypeError):
+
+            return render_template(
+                "admin_questions.html",
+                exams=all_exams,
+                error="Invalid exam selected."
             )
+
+        question_text = request.form.get(
+            "question"
         )
 
-        conn.commit()
+        option_a = request.form.get(
+            "option_a"
+        )
 
-        message = "Question added successfully!"
+        option_b = request.form.get(
+            "option_b"
+        )
 
-    exams = conn.execute(
-        "SELECT * FROM exams ORDER BY id DESC"
-    ).fetchall()
+        option_c = request.form.get(
+            "option_c"
+        )
 
-    questions = conn.execute(
-        """
-        SELECT questions.*, exams.title
-        FROM questions
-        JOIN exams
-        ON questions.exam_id = exams.id
-        ORDER BY questions.id DESC
-        """
-    ).fetchall()
+        option_d = request.form.get(
+            "option_d"
+        )
 
-    conn.close()
+        correct_answer = request.form.get(
+            "correct_answer"
+        )
+
+        # Check exam exists
+        selected_exam = exams.find_one({
+            "id": exam_id
+        })
+
+        if selected_exam is None:
+
+            return render_template(
+                "admin_questions.html",
+                exams=all_exams,
+                error="Exam not found."
+            )
+
+        questions.insert_one({
+            "id": get_next_id("questions"),
+            "exam_id": exam_id,
+            "question": question_text,
+            "option_a": option_a,
+            "option_b": option_b,
+            "option_c": option_c,
+            "option_d": option_d,
+            "correct_answer": correct_answer
+        })
+
+        return redirect(
+            url_for("admin_questions")
+        )
 
     return render_template(
-        "manage_questions.html",
-        exams=exams,
-        questions=questions,
-        message=message
+        "admin_questions.html",
+        exams=all_exams
     )
+
+
+# =========================================================
+# EXAM INSTRUCTIONS
+# =========================================================
 
 @app.route("/instructions/<int:exam_id>")
 def instructions(exam_id):
 
     if "user_id" not in session:
-        return redirect(url_for("login"))
 
-    conn = get_db_connection()
+        return redirect(
+            url_for("login")
+        )
 
-    exam = conn.execute(
-        "SELECT * FROM exams WHERE id = ?",
-        (exam_id,)
-    ).fetchone()
+    exam = exams.find_one({
+        "id": exam_id
+    })
 
-    conn.close()
+    if exam is None:
 
-    if not exam:
-        return "Examination not found", 404
+        return redirect(
+            url_for("dashboard")
+        )
 
     return render_template(
         "instructions.html",
         exam=exam
     )
 
+
+# =========================================================
+# START EXAM
+# =========================================================
+
 @app.route("/exam/<int:exam_id>")
 def exam(exam_id):
 
     if "user_id" not in session:
-        return redirect(url_for("login"))
 
-    conn = get_db_connection()
+        return redirect(
+            url_for("login")
+        )
 
-    exam = conn.execute(
-        """
-        SELECT *
-        FROM exams
-        WHERE id = ?
-        """,
-        (exam_id,)
-    ).fetchone()
+    exam_data = exams.find_one({
+        "id": exam_id
+    })
 
-    if not exam:
-        conn.close()
-        return "Examination not found", 404
+    if exam_data is None:
 
-    questions = conn.execute(
-        """
-        SELECT *
-        FROM questions
-        WHERE exam_id = ?
-        ORDER BY id
-        """,
-        (exam_id,)
-    ).fetchall()
+        return redirect(
+            url_for("dashboard")
+        )
 
-    conn.close()
-
-    if not questions:
-        return "No questions available for this examination.", 400
+    exam_questions = list(
+        questions.find({
+            "exam_id": exam_id
+        }).sort("id", 1)
+    )
 
     return render_template(
         "exam.html",
-        exam=exam,
-        questions=questions
+        exam=exam_data,
+        questions=exam_questions
     )
 
-@app.route("/submit-exam/<int:exam_id>", methods=["POST"])
+
+# =========================================================
+# SUBMIT EXAM
+# =========================================================
+
+@app.route(
+    "/submit-exam/<int:exam_id>",
+    methods=["POST"]
+)
 def submit_exam(exam_id):
 
     if "user_id" not in session:
-        return redirect(url_for("login"))
 
-    conn = get_db_connection()
+        return redirect(
+            url_for("login")
+        )
 
-    exam = conn.execute(
-        "SELECT * FROM exams WHERE id = ?",
-        (exam_id,)
-    ).fetchone()
+    exam_data = exams.find_one({
+        "id": exam_id
+    })
 
-    if not exam:
-        conn.close()
-        return "Examination not found", 404
+    if exam_data is None:
 
-    questions = conn.execute(
-        """
-        SELECT *
-        FROM questions
-        WHERE exam_id = ?
-        ORDER BY id
-        """,
-        (exam_id,)
-    ).fetchall()
+        return redirect(
+            url_for("dashboard")
+        )
+
+    exam_questions = list(
+        questions.find({
+            "exam_id": exam_id
+        }).sort("id", 1)
+    )
 
     score = 0
 
-    for question in questions:
+    # =====================================================
+    # CHECK ANSWERS
+    # =====================================================
+
+    for question in exam_questions:
+
+        question_id = question["id"]
 
         selected_answer = request.form.get(
-            f"question_{question['id']}"
+            f"question_{question_id}"
         )
 
-        if selected_answer == question["correct_answer"]:
+        correct_answer = question[
+            "correct_answer"
+        ]
+
+        if selected_answer == correct_answer:
+
             score += 1
 
-    total_questions = len(questions)
+    # =====================================================
+    # TOTAL QUESTIONS
+    # =====================================================
 
+    total_questions = len(
+        exam_questions
+    )
+
+    # Avoid division by zero
     if total_questions > 0:
-        percentage = (score / total_questions) * 100
+
+        percentage = (
+            score / total_questions
+        ) * 100
+
     else:
+
         percentage = 0
 
-    cursor = conn.execute(
-        """
-        INSERT INTO results
-        (user_id, exam_id, score, total_questions, percentage)
-        VALUES (?, ?, ?, ?, ?)
-        """,
-        (
-            session["user_id"],
-            exam_id,
-            score,
-            total_questions,
-            percentage
-        )
+    # =====================================================
+    # CREATE RESULT
+    # =====================================================
+
+    result_id = get_next_id(
+        "results"
     )
 
-    result_id = cursor.lastrowid
+    results.insert_one({
+        "id": result_id,
+        "user_id": session["user_id"],
+        "exam_id": exam_id,
+        "score": score,
+        "total_questions": total_questions,
+        "percentage": round(
+            percentage,
+            2
+        ),
+        "date": datetime.now(
+            timezone.utc
+        )
+    })
 
-    conn.commit()
+    # =====================================================
+    # SAVE EACH ANSWER
+    # =====================================================
 
-    for question in questions:
+    for question in exam_questions:
+
+        question_id = question["id"]
 
         selected_answer = request.form.get(
-            f"question_{question['id']}"
+            f"question_{question_id}"
         )
 
-        conn.execute(
-            """
-            INSERT INTO answers
-            (result_id, question_id, selected_answer)
-            VALUES (?, ?, ?)
-            """,
-            (
-                result_id,
-                question["id"],
-                selected_answer
-            )
-        )
+        answers.insert_one({
+            "id": get_next_id("answers"),
+            "result_id": result_id,
+            "question_id": question_id,
+            "selected_answer": selected_answer
+        })
 
-    conn.commit()
-    conn.close()
+    # =====================================================
+    # SHOW RESULT
+    # =====================================================
 
     return redirect(
-        url_for("result", result_id=result_id)
+        url_for(
+            "result",
+            result_id=result_id
+        )
     )
+
+
+# =========================================================
+# EXAM HISTORY
+# =========================================================
 
 @app.route("/history")
 def history():
 
     if "user_id" not in session:
-        return redirect(url_for("login"))
 
-    conn = get_db_connection()
+        return redirect(
+            url_for("login")
+        )
 
-    results = conn.execute(
-        """
-        SELECT results.*, exams.title, exams.subject
-        FROM results
-        JOIN exams ON results.exam_id = exams.id
-        WHERE results.user_id = ?
-        ORDER BY results.date DESC
-        """,
-        (session["user_id"],)
-    ).fetchall()
+    user_results = list(
+        results.find({
+            "user_id": session["user_id"]
+        }).sort("date", -1)
+    )
 
-    conn.close()
+    # Add exam information to every result
+    for result in user_results:
+
+        exam_data = exams.find_one({
+            "id": result["exam_id"]
+        })
+
+        if exam_data:
+
+            result["exam_title"] = exam_data.get(
+                "title",
+                "Unknown Exam"
+            )
+
+            result["subject"] = exam_data.get(
+                "subject",
+                ""
+            )
+
+        else:
+
+            result["exam_title"] = "Unknown Exam"
+            result["subject"] = ""
 
     return render_template(
         "history.html",
-        results=results
+        results=user_results
     )
+
+
+# =========================================================
+# RESULT PAGE
+# =========================================================
 
 @app.route("/result/<int:result_id>")
 def result(result_id):
 
     if "user_id" not in session:
-        return redirect(url_for("login"))
 
-    conn = get_db_connection()
+        return redirect(
+            url_for("login")
+        )
 
-    result = conn.execute(
-        """
-        SELECT *
-        FROM results
-        WHERE id = ?
-        AND user_id = ?
-        """,
-        (result_id, session["user_id"])
-    ).fetchone()
+    result_data = results.find_one({
+        "id": result_id
+    })
 
-    if not result:
-        conn.close()
-        return "Result not found", 404
+    if result_data is None:
 
-    exam = conn.execute(
-        """
-        SELECT *
-        FROM exams
-        WHERE id = ?
-        """,
-        (result["exam_id"],)
-    ).fetchone()
+        return redirect(
+            url_for("dashboard")
+        )
 
-    conn.close()
+    # Security:
+    # Student can only see their own result
+    if result_data["user_id"] != session["user_id"]:
+
+        return redirect(
+            url_for("dashboard")
+        )
+
+    exam_data = exams.find_one({
+        "id": result_data["exam_id"]
+    })
 
     return render_template(
         "result.html",
-        result=result,
-        exam=exam,
-        user_name=session["user_name"]
+        result=result_data,
+        exam=exam_data
     )
-     
+
+
+# =========================================================
+# INITIALIZE MONGODB
+# =========================================================
+
+create_indexes()
+initialize_counters()
+create_admin()
+
+
+# =========================================================
+# RUN APPLICATION
+# =========================================================
+
 if __name__ == "__main__":
-    create_tables()
-    create_admin()
-    app.run(debug=True)
+
+    app.run(
+        debug=True
+    )
